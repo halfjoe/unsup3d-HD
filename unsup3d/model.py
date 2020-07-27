@@ -3,6 +3,7 @@ import math
 import glob
 import torch
 import torch.nn as nn
+import torch.nn.functionals as F
 import torchvision
 from . import networks
 from . import utils
@@ -161,6 +162,9 @@ class Unsup3D():
 
         ## reconstruct input view
         self.renderer.set_transform_matrices(self.view)
+        small_canon_depth = F.interpolate(self.canon_depth.unsqueeze(0), size=(128, 128))[0]
+        small_recon_depth = self.recon_depth[:,0:128,0:128]
+        self.recon_depth = F.interpolate(small_recon_depth.unsqueeze(0), size=(256, 256))[0]
         self.recon_depth = self.renderer.warp_canon_depth(self.canon_depth)
         self.recon_normal = self.renderer.get_normal_from_depth(self.recon_depth)
         grid_2d_from_canon = self.renderer.get_inv_warped_2d_grid(self.recon_depth)
@@ -219,10 +223,10 @@ class Unsup3D():
         b0 = min(max_bs, b)
 
         ## render rotations
-        with torch.no_grad():
-            v0 = torch.FloatTensor([-0.1*math.pi/180*60,0,0,0,0,0]).to(self.input_im.device).repeat(b0,1)
-            canon_im_rotate = self.renderer.render_yaw(self.canon_im[:b0], self.canon_depth[:b0], v_before=v0, maxr=90).detach().cpu() /2.+0.5  # (B,T,C,H,W)
-            canon_normal_rotate = self.renderer.render_yaw(self.canon_normal[:b0].permute(0,3,1,2), self.canon_depth[:b0], v_before=v0, maxr=90).detach().cpu() /2.+0.5  # (B,T,C,H,W)
+        # with torch.no_grad():
+        #     v0 = torch.FloatTensor([-0.1*math.pi/180*60,0,0,0,0,0]).to(self.input_im.device).repeat(b0,1)
+        #     canon_im_rotate = self.renderer.render_yaw(self.canon_im[:b0], self.canon_depth[:b0], v_before=v0, maxr=90).detach().cpu() /2.+0.5  # (B,T,C,H,W)
+        #     canon_normal_rotate = self.renderer.render_yaw(self.canon_normal[:b0].permute(0,3,1,2), self.canon_depth[:b0], v_before=v0, maxr=90).detach().cpu() /2.+0.5  # (B,T,C,H,W)
 
         input_im = self.input_im[:b0].detach().cpu().numpy() /2+0.5
         input_im_symline = self.input_im_symline[:b0].detach().cpu() /2.+0.5
@@ -242,10 +246,10 @@ class Unsup3D():
         conf_map_percl = 1/(1+self.conf_sigma_percl[:b0,:1].detach().cpu()+EPS)
         conf_map_percl_flip = 1/(1+self.conf_sigma_percl[:b0,1:].detach().cpu()+EPS)
 
-        canon_im_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b0**0.5))) for img in torch.unbind(canon_im_rotate, 1)]  # [(C,H,W)]*T
-        canon_im_rotate_grid = torch.stack(canon_im_rotate_grid, 0).unsqueeze(0)  # (1,T,C,H,W)
-        canon_normal_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b0**0.5))) for img in torch.unbind(canon_normal_rotate, 1)]  # [(C,H,W)]*T
-        canon_normal_rotate_grid = torch.stack(canon_normal_rotate_grid, 0).unsqueeze(0)  # (1,T,C,H,W)
+        # canon_im_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b0**0.5))) for img in torch.unbind(canon_im_rotate, 1)]  # [(C,H,W)]*T
+        # canon_im_rotate_grid = torch.stack(canon_im_rotate_grid, 0).unsqueeze(0)  # (1,T,C,H,W)
+        # canon_normal_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b0**0.5))) for img in torch.unbind(canon_normal_rotate, 1)]  # [(C,H,W)]*T
+        # canon_normal_rotate_grid = torch.stack(canon_normal_rotate_grid, 0).unsqueeze(0)  # (1,T,C,H,W)
 
         ## write summary
         logger.add_scalar('Loss/loss_total', self.loss_total, total_iter)
@@ -273,7 +277,7 @@ class Unsup3D():
         log_grid_image('Image/canonical_image', canon_im)
         log_grid_image('Image/recon_image', recon_im)
         log_grid_image('Image/recon_image_flip', recon_im_flip)
-        log_grid_image('Image/recon_side', canon_im_rotate[:,0,:,:,:])
+        # log_grid_image('Image/recon_side', canon_im_rotate[:,0,:,:,:])
 
         log_grid_image('Depth/canonical_depth_raw', canon_depth_raw)
         log_grid_image('Depth/canonical_depth', canon_depth)
@@ -294,8 +298,8 @@ class Unsup3D():
         log_grid_image('Conf/conf_map_percl_flip', conf_map_percl_flip)
         logger.add_histogram('Conf/conf_sigma_percl_flip_hist', self.conf_sigma_percl[:,1:], total_iter)
 
-        logger.add_video('Image_rotate/recon_rotate', canon_im_rotate_grid, total_iter, fps=4)
-        logger.add_video('Image_rotate/canon_normal_rotate', canon_normal_rotate_grid, total_iter, fps=4)
+        # logger.add_video('Image_rotate/recon_rotate', canon_im_rotate_grid, total_iter, fps=4)
+        # logger.add_video('Image_rotate/canon_normal_rotate', canon_normal_rotate_grid, total_iter, fps=4)
 
         # visualize images and accuracy if gt is loaded
         if self.load_gt_depth:
@@ -317,12 +321,12 @@ class Unsup3D():
     def save_results(self, save_dir):
         b, c, h, w = self.input_im.shape
 
-        with torch.no_grad():
-            v0 = torch.FloatTensor([-0.1*math.pi/180*60,0,0,0,0,0]).to(self.input_im.device).repeat(b,1)
-            canon_im_rotate = self.renderer.render_yaw(self.canon_im[:b], self.canon_depth[:b], v_before=v0, maxr=90, nsample=15)  # (B,T,C,H,W)
-            canon_im_rotate = canon_im_rotate.clamp(-1,1).detach().cpu() /2+0.5
-            canon_normal_rotate = self.renderer.render_yaw(self.canon_normal[:b].permute(0,3,1,2), self.canon_depth[:b], v_before=v0, maxr=90, nsample=15)  # (B,T,C,H,W)
-            canon_normal_rotate = canon_normal_rotate.clamp(-1,1).detach().cpu() /2+0.5
+        # with torch.no_grad():
+        #     v0 = torch.FloatTensor([-0.1*math.pi/180*60,0,0,0,0,0]).to(self.input_im.device).repeat(b,1)
+        #     canon_im_rotate = self.renderer.render_yaw(self.canon_im[:b], self.canon_depth[:b], v_before=v0, maxr=90, nsample=15)  # (B,T,C,H,W)
+        #     canon_im_rotate = canon_im_rotate.clamp(-1,1).detach().cpu() /2+0.5
+        #     canon_normal_rotate = self.renderer.render_yaw(self.canon_normal[:b].permute(0,3,1,2), self.canon_depth[:b], v_before=v0, maxr=90, nsample=15)  # (B,T,C,H,W)
+        #     canon_normal_rotate = canon_normal_rotate.clamp(-1,1).detach().cpu() /2+0.5
 
         input_im = self.input_im[:b].detach().cpu().numpy() /2+0.5
         input_im_symline = self.input_im_symline.detach().cpu().numpy() /2.+0.5
@@ -342,10 +346,10 @@ class Unsup3D():
         canon_light = torch.cat([self.canon_light_a, self.canon_light_b, self.canon_light_d], 1)[:b].detach().cpu().numpy()
         view = self.view[:b].detach().cpu().numpy()
 
-        canon_im_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b**0.5))) for img in torch.unbind(canon_im_rotate,1)]  # [(C,H,W)]*T
-        canon_im_rotate_grid = torch.stack(canon_im_rotate_grid, 0).unsqueeze(0).numpy()  # (1,T,C,H,W)
-        canon_normal_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b**0.5))) for img in torch.unbind(canon_normal_rotate,1)]  # [(C,H,W)]*T
-        canon_normal_rotate_grid = torch.stack(canon_normal_rotate_grid, 0).unsqueeze(0).numpy()  # (1,T,C,H,W)
+        # canon_im_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b**0.5))) for img in torch.unbind(canon_im_rotate,1)]  # [(C,H,W)]*T
+        # canon_im_rotate_grid = torch.stack(canon_im_rotate_grid, 0).unsqueeze(0).numpy()  # (1,T,C,H,W)
+        # canon_normal_rotate_grid = [torchvision.utils.make_grid(img, nrow=int(math.ceil(b**0.5))) for img in torch.unbind(canon_normal_rotate,1)]  # [(C,H,W)]*T
+        # canon_normal_rotate_grid = torch.stack(canon_normal_rotate_grid, 0).unsqueeze(0).numpy()  # (1,T,C,H,W)
 
         sep_folder = True
         utils.save_images(save_dir, input_im, suffix='input_image', sep_folder=sep_folder)
@@ -366,8 +370,8 @@ class Unsup3D():
         utils.save_txt(save_dir, canon_light, suffix='canonical_light', sep_folder=sep_folder)
         utils.save_txt(save_dir, view, suffix='viewpoint', sep_folder=sep_folder)
 
-        utils.save_videos(save_dir, canon_im_rotate_grid, suffix='image_video', sep_folder=sep_folder, cycle=True)
-        utils.save_videos(save_dir, canon_normal_rotate_grid, suffix='normal_video', sep_folder=sep_folder, cycle=True)
+        # utils.save_videos(save_dir, canon_im_rotate_grid, suffix='image_video', sep_folder=sep_folder, cycle=True)
+        # utils.save_videos(save_dir, canon_normal_rotate_grid, suffix='normal_video', sep_folder=sep_folder, cycle=True)
 
         # save scores if gt is loaded
         if self.load_gt_depth:
