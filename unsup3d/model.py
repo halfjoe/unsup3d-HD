@@ -163,9 +163,9 @@ class Unsup3D():
         ## reconstruct input view
         self.renderer.set_transform_matrices(self.view)
         small_canon_depth = F.interpolate(self.canon_depth.unsqueeze(0), size=(128, 128))[0]
+        self.recon_depth = self.renderer.warp_canon_depth(self.canon_depth)
         small_recon_depth = self.recon_depth[:,0:128,0:128]
         self.recon_depth = F.interpolate(small_recon_depth.unsqueeze(0), size=(256, 256))[0]
-        self.recon_depth = self.renderer.warp_canon_depth(self.canon_depth)
         self.recon_normal = self.renderer.get_normal_from_depth(self.recon_depth)
         grid_2d_from_canon = self.renderer.get_inv_warped_2d_grid(self.recon_depth)
         self.recon_im = nn.functional.grid_sample(self.canon_im, grid_2d_from_canon, mode='bilinear')
