@@ -3,7 +3,7 @@ import math
 import glob
 import torch
 import torch.nn as nn
-import torch.nn.functionals as F
+import torch.nn.functional as F
 import torchvision
 from . import networks
 from . import utils
