@@ -1,11 +1,11 @@
 ## train celeba
 ## trainer
 run_train: true
-num_epochs: 330
-batch_size: 1
-checkpoint_dir: results/celeba_256_1
-save_checkpoint_freq: 300
-keep_num_checkpoint: 1
+num_epochs: 30
+batch_size: 2
+checkpoint_dir: results/celeba_256
+save_checkpoint_freq: 1 
+keep_num_checkpoint: 3
 resume: true
 use_logger: true
 log_freq: 500
@@ -14,10 +14,10 @@ log_freq: 500
 num_workers: 4
 image_size: 256
 load_gt_depth: false
-train_val_data_dir: data/celeba_cropped_256_1
+train_val_data_dir: data/celeba_cropped_256
 
 ## model
-model_name: unsup3d_celeba_256_1
+model_name: unsup3d_celeba_256
 min_depth: 0.9
 max_depth: 1.1
 xyz_rotation_range: 60  # (-r,r) in degrees
